@@ -30,6 +30,7 @@ async fn main() {
 
     log::info!("Binding to socket");
     let mut stream_receiver = StreamReceiver::new(ip, opts.port).await;
+    stream_receiver.set_timeout(Duration::from_secs(1));
 
     let mut total_batches = 0u64;
     let mut dropped_batches = 0u64;
@@ -40,10 +41,10 @@ async fn main() {
     log::info!("Reading frames");
     while Instant::now() < stop {
         let frame = stream_receiver.next_frame().await.unwrap();
-        total_batches += frame.batch_count() as u64;
+        total_batches += frame.data.batch_count() as u64;
 
         if let Some(expect) = expect_sequence {
-            let num_dropped = frame.sequence_number.wrapping_sub(expect) as u64;
+            let num_dropped = frame.sequence_number().wrapping_sub(expect) as u64;
             dropped_batches += num_dropped;
             total_batches += num_dropped;
 
@@ -52,12 +53,16 @@ async fn main() {
                     "Lost {} batches: {:#08X} -> {:#08X}",
                     num_dropped,
                     expect,
-                    frame.sequence_number,
+                    frame.sequence_number(),
                 );
             }
         }
 
-        expect_sequence = Some(frame.sequence_number.wrapping_add(frame.batch_count() as _));
+        expect_sequence = Some(
+            frame
+                .sequence_number()
+                .wrapping_add(frame.data.batch_count() as _),
+        );
     }
 
     assert!(total_batches > 0);
